@@ -2,16 +2,16 @@ from transformers import GPT2LMHeadModel, GPT2Tokenizer
 import torch
 
 class SmallLLM2:
-    def __init__(self, model_name="gpt2"):
+    def __init__(self, model_name="gpt2", device='cpu'):
         print(f"Loading {model_name}...")
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = device
         self.tokenizer = GPT2Tokenizer.from_pretrained(model_name)
         self.model = GPT2LMHeadModel.from_pretrained(
             model_name,
-            torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+            torch_dtype=torch.float32,  # Always use float32 for CPU
             pad_token_id=self.tokenizer.eos_token_id
         ).to(self.device)
-        print(f"{model_name} loaded successfully on {self.device}")
+        print(f"{model_name} loaded successfully on {self.device.upper()}")
 
     def generate(self, prompt, max_length=100, temperature=0.7, top_p=0.9):
         """

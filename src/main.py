@@ -8,21 +8,22 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 class LLMInterface:
-    def __init__(self, device: str = None):
+    def __init__(self, device: str = 'cpu'):
         """
         Initialize the LLM interface with both models.
         
         Args:
-            device (str, optional): Device to run models on ('cuda' or 'cpu').
-                                 If None, automatically uses CUDA if available.
+            device (str): Device to run models on ('cpu' or 'cuda').
+                       Defaults to 'cpu' for maximum compatibility.
         """
         print("Initializing LLM Interface...")
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = 'cpu'  # Force CPU usage
         print(f"Using device: {self.device.upper()}")
         
         # Initialize models (will be loaded on first use)
-        self.llm1 = SmallLLM1()
-        self.llm2 = SmallLLM2()
+        print("Initializing models...")
+        self.llm1 = SmallLLM1(device=self.device)
+        self.llm2 = SmallLLM2(device=self.device)
         print("LLM Interface initialized successfully! Models will be loaded on first use.")
 
     def process_text_with_llm1(self, text: str, max_length: int = 100, temperature: float = 0.7) -> str:
