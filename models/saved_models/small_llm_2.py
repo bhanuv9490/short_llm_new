@@ -5,56 +5,28 @@ class SmallLLM2:
     def __init__(self, model_name="gpt2", device=None):
         print(f"Loading {model_name}...")
         
-        # Check CUDA availability and compatibility
-        self.has_cuda = torch.cuda.is_available()
-        self.device = device or ("cuda" if self.has_cuda else "cpu")
+        # Force CPU for GPT-2 due to CUDA compatibility issues
+        self.device = "cpu"
+        self.use_amp = False
+        print("Note: GPT-2 is configured to use CPU for better compatibility")
+        print("This model will run slower but should be more stable")
         
-        # Fall back to CPU if CUDA is not properly configured
-        if self.device.startswith('cuda') and not self.has_cuda:
-            print("Warning: CUDA is not available. Falling back to CPU.")
-            self.device = "cpu"
-            
-        self.use_amp = self.device.startswith('cuda')
+        # Keep track of original device for reference
+        self.original_device = device or "auto"
         
         # Initialize tokenizer
         self.tokenizer = GPT2Tokenizer.from_pretrained(model_name)
         
-        # Configure model with appropriate precision
-        torch_dtype = torch.float16 if self.use_amp else torch.float32
+        # Always use float32 for CPU
+        torch_dtype = torch.float32
         
         try:
-            # Try loading with CUDA if available
-            if self.use_amp and self.has_cuda:
-                try:
-                    # Initialize GradScaler for mixed precision first
-                    self.scaler = torch.amp.GradScaler(device_type='cuda')
-                    print("Initialized CUDA with mixed precision")
-                    
-                    # Use device_map='auto' for better memory management with CUDA
-                    self.model = GPT2LMHeadModel.from_pretrained(
-                        model_name,
-                        torch_dtype=torch_dtype,
-                        pad_token_id=self.tokenizer.eos_token_id,
-                        device_map='auto'
-                    )
-                except Exception as e:
-                    print(f"Warning: Mixed precision initialization failed: {e}")
-                    print("Falling back to FP32 on CUDA...")
-                    self.use_amp = False
-                    torch_dtype = torch.float32
-                    self.model = GPT2LMHeadModel.from_pretrained(
-                        model_name,
-                        torch_dtype=torch_dtype,
-                        pad_token_id=self.tokenizer.eos_token_id,
-                        device_map='auto' if self.has_cuda else None
-                    )
-            else:
-                # For CPU or when CUDA is not available
-                self.model = GPT2LMHeadModel.from_pretrained(
-                    model_name,
-                    torch_dtype=torch_dtype,
-                    pad_token_id=self.tokenizer.eos_token_id
-                ).to(self.device)
+            # Simple CPU loading for maximum compatibility
+            self.model = GPT2LMHeadModel.from_pretrained(
+                model_name,
+                torch_dtype=torch_dtype,
+                pad_token_id=self.tokenizer.eos_token_id
+            ).to(self.device)
                 
             print(f"{model_name} loaded successfully on {self.device.upper()}" + 
                   (" with mixed precision" if self.use_amp else ""))
@@ -88,27 +60,30 @@ class SmallLLM2:
         Returns:
             str: Generated text
         """
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        
-        with torch.no_grad():
-            if self.use_amp:
-                with torch.cuda.amp.autocast():
-                    outputs = self.model.generate(
-                        **inputs,
-                        max_length=max_length,
-                        temperature=temperature,
-                        top_p=top_p,
-                        do_sample=True,
-                        pad_token_id=self.tokenizer.eos_token_id
-                    )
-            else:
+        try:
+            # Tokenize input and move to device
+            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+            
+            # Generate text with CPU
+            with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
                     max_length=max_length,
                     temperature=temperature,
                     top_p=top_p,
                     do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    no_repeat_ngram_size=2  # Add some variety
                 )
-        
-        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Decode and clean up the output
+            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Remove input prompt from response if it's there
+            if generated_text.startswith(prompt):
+                generated_text = generated_text[len(prompt):].strip()
+                
+            return generated_text
+            
+        except Exception as e:
+            return f"Error generating text: {str(e)}"
