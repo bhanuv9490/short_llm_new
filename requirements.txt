@@ -1,34 +1,35 @@
 # Core ML Dependencies with specific versions for compatibility
-torch>=2.2.0,<2.3.0
-torchaudio>=2.2.0,<2.3.0
-torchvision>=0.17.0,<0.18.0
+torch==2.7.0
+torchaudio==2.7.0
+torchvision==0.22.0
+numpy>=1.24.0,<2.0.0  # Use NumPy 1.x for better compatibility with Apple Silicon
 
 # Transformer and Model Libraries
-transformers>=4.37.0,<4.39.0  # Pin to a version known to work with Phi-3
-sentencepiece>=0.1.99  # Required for tokenizers
-accelerate>=0.25.0
-bitsandbytes>=0.41.0  # Required for 4-bit quantization
+transformers==4.52.3  # Specific version known to work with Phi-3
+sentencepiece==0.2.0  # Required for tokenizers
+accelerate==1.7.0  # Latest stable version for better compatibility with transformers
+bitsandbytes==0.42.0  # Required for 4-bit quantization
+tokenizers>=0.15.2  # Required for fast tokenizers
+protobuf>=4.25.0  # Required by transformers
 
-# For Apple Silicon (M1/M2) - use conda or install system dependencies
+# Required system dependencies for Apple Silicon
 # Run: brew install cmake pkg-config
 
-# Quantization (optional, uncomment if needed)
-# bitsandbytes>=0.41.0  # Note: May require manual build on some systems
-
-# For better performance on Apple Silicon
+# For better performance on Apple Silicon (M1/M2)
+# Uncomment the following line to use PyTorch nightly builds for M1/M2
 # pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cpu
 
 # Web Framework
-fastapi>=0.95.0
-uvicorn>=0.21.0
-python-multipart>=0.0.6
+fastapi==0.115.12
+uvicorn==0.34.2
+python-multipart==0.0.20
 
 # Security & Authentication
-python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
+python-jose[cryptography]==3.4.0
+passlib[bcrypt]==1.7.4
 
 # Utilities
-python-dotenv>=1.0.0
-jinja2>=3.1.2
-aiofiles>=23.1.0
-numpy>=1.24.0
+python-dotenv==1.1.0
+jinja2==3.1.6
+aiofiles==24.1.0
+numpy==2.0.2  # Fixed to latest stable version
