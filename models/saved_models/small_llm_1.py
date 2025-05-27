@@ -1,17 +1,48 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, logging
 import torch
+import time
+from tqdm import tqdm
+import warnings
+
+# Suppress some unnecessary warnings
+logging.set_verbosity_error()
+warnings.filterwarnings("ignore", category=UserWarning)
 
 class SmallLLM1:
     def __init__(self, model_name="microsoft/phi-2"):
-        print(f"Loading {model_name}...")
+        print(f"Initializing {model_name}...")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        self.model_name = model_name
+        self.model = None
+        self.tokenizer = None
+        self.is_initialized = False
+        
+    def _download_with_progress(self):
+        """Download model with progress bar"""
+        print(f"Downloading {self.model_name} (this may take a few minutes, ~2.7GB)...")
+        
+        # Initialize tokenizer
+        print("Downloading tokenizer...")
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.model_name, 
+            trust_remote_code=True
+        )
+        
+        # Initialize model with progress
+        print("Downloading model weights...")
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
+            self.model_name,
             torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
             trust_remote_code=True
         ).to(self.device)
-        print(f"{model_name} loaded successfully on {self.device}")
+        
+        self.is_initialized = True
+        print(f"\n{self.model_name} loaded successfully on {self.device.upper()}")
+        
+    def ensure_initialized(self):
+        """Ensure model is downloaded and initialized"""
+        if not self.is_initialized:
+            self._download_with_progress()
 
     def predict(self, text, max_length=100, temperature=0.7):
         """
@@ -23,17 +54,39 @@ class SmallLLM1:
             temperature (float): Controls randomness in generation (lower = more deterministic)
             
         Returns:
-            str: Generated text completion
+            str: Generated text completion or error message
         """
-        inputs = self.tokenizer(text, return_tensors="pt").to(self.device)
-        
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_length=max_length,
-                temperature=temperature,
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id
-            )
+        try:
+            # Ensure model is loaded
+            self.ensure_initialized()
             
-        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # Tokenize input
+            inputs = self.tokenizer(text, return_tensors="pt").to(self.device)
+            
+            print(f"Generating response (max_length={max_length}, temp={temperature})...")
+            
+            # Generate response with progress
+            with torch.no_grad():
+                outputs = self.model.generate(
+                    **inputs,
+                    max_length=max_length,
+                    temperature=temperature,
+                    do_sample=True,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    num_return_sequences=1,
+                    no_repeat_ngram_size=2
+                )
+                
+            # Decode and clean up the output
+            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Remove input prompt from response if it's there
+            if response.startswith(text):
+                response = response[len(text):].strip()
+                
+            return response
+            
+        except Exception as e:
+            error_msg = f"Error generating text: {str(e)}"
+            print(error_msg)
+            return error_msg
