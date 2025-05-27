@@ -11,40 +11,84 @@ warnings.filterwarnings("ignore", category=UserWarning)
 class SmallLLM1:
     def __init__(self, model_name="microsoft/phi-2", device=None):
         print(f"Initializing {model_name}...")
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Check CUDA availability and compatibility
+        self.has_cuda = torch.cuda.is_available()
+        self.device = device or ("cuda" if self.has_cuda else "cpu")
+        
+        # Fall back to CPU if CUDA is not properly configured
+        if self.device.startswith('cuda') and not self.has_cuda:
+            print("Warning: CUDA is not available. Falling back to CPU.")
+            self.device = "cpu"
+            
         self.model_name = model_name
         self.model = None
         self.tokenizer = None
         self.is_initialized = False
         
         # Use mixed precision for CUDA if available
-        self.use_amp = self.device.startswith('cuda')
+        self.use_amp = self.device.startswith('cuda') and torch.cuda.is_available()
         if self.use_amp:
-            self.scaler = torch.cuda.amp.GradScaler()
+            try:
+                # Use the new GradScaler API
+                self.scaler = torch.amp.GradScaler(device_type='cuda')
+                print("Initialized CUDA with mixed precision")
+            except Exception as e:
+                print(f"Warning: Could not initialize mixed precision: {e}")
+                self.use_amp = False
+                self.device = 'cpu'
         
     def _download_with_progress(self):
         """Download model with progress bar"""
         print(f"Downloading {self.model_name} (this may take a few minutes, ~2.7GB)...")
         
-        # Initialize tokenizer
-        print("Downloading tokenizer...")
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name, 
-            trust_remote_code=True
-        )
-        
-        # Initialize model with progress
-        print("Downloading model weights...")
-        torch_dtype = torch.float16 if self.use_amp else torch.float32
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            torch_dtype=torch_dtype,
-            trust_remote_code=True,
-            device_map="auto" if self.device.startswith('cuda') else None
-        ).to(self.device)
-        
-        self.is_initialized = True
-        print(f"\n{self.model_name} loaded successfully on {self.device.upper()}")
+        try:
+            # Initialize tokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                trust_remote_code=True
+            )
+            
+            # Configure model with appropriate precision
+            torch_dtype = torch.float16 if self.use_amp else torch.float32
+            
+            # Try loading with CUDA if available
+            if self.use_amp:
+                # Use device_map='auto' for better memory management with CUDA
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_name,
+                    torch_dtype=torch_dtype,
+                    trust_remote_code=True,
+                    device_map='auto' if self.has_cuda else None
+                )
+            else:
+                # For CPU or when CUDA is not available
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_name,
+                    torch_dtype=torch_dtype,
+                    trust_remote_code=True
+                ).to(self.device)
+            
+            self.is_initialized = True
+            print(f"\n{self.model_name} loaded successfully on {self.device.upper()}" +
+                  (" with mixed precision" if self.use_amp else ""))
+                  
+        except RuntimeError as e:
+            if 'CUDA' in str(e):
+                print(f"CUDA error: {e}")
+                print("Falling back to CPU...")
+                self.device = "cpu"
+                self.use_amp = False
+                # Retry with CPU
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_name,
+                    torch_dtype=torch.float32,
+                    trust_remote_code=True
+                ).to(self.device)
+                self.is_initialized = True
+                print(f"{self.model_name} loaded on CPU")
+            else:
+                raise
         
     def ensure_initialized(self):
         """Ensure model is downloaded and initialized"""

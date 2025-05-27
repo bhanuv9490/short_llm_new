@@ -24,16 +24,30 @@ class SmallLLM2:
         
         try:
             # Try loading with CUDA if available
-            if self.use_amp:
-                # Use device_map='auto' for better memory management with CUDA
-                self.model = GPT2LMHeadModel.from_pretrained(
-                    model_name,
-                    torch_dtype=torch_dtype,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    device_map='auto' if self.has_cuda else None
-                )
-                # Initialize GradScaler for mixed precision
-                self.scaler = torch.amp.GradScaler(device_type='cuda')
+            if self.use_amp and self.has_cuda:
+                try:
+                    # Initialize GradScaler for mixed precision first
+                    self.scaler = torch.amp.GradScaler(device_type='cuda')
+                    print("Initialized CUDA with mixed precision")
+                    
+                    # Use device_map='auto' for better memory management with CUDA
+                    self.model = GPT2LMHeadModel.from_pretrained(
+                        model_name,
+                        torch_dtype=torch_dtype,
+                        pad_token_id=self.tokenizer.eos_token_id,
+                        device_map='auto'
+                    )
+                except Exception as e:
+                    print(f"Warning: Mixed precision initialization failed: {e}")
+                    print("Falling back to FP32 on CUDA...")
+                    self.use_amp = False
+                    torch_dtype = torch.float32
+                    self.model = GPT2LMHeadModel.from_pretrained(
+                        model_name,
+                        torch_dtype=torch_dtype,
+                        pad_token_id=self.tokenizer.eos_token_id,
+                        device_map='auto' if self.has_cuda else None
+                    )
             else:
                 # For CPU or when CUDA is not available
                 self.model = GPT2LMHeadModel.from_pretrained(

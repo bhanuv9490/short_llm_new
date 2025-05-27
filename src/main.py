@@ -16,27 +16,75 @@ class LLMInterface:
             device (str, optional): Device to run models on ('cuda' or 'cpu').
                                  If None, automatically uses CUDA if available.
         """
+        print("=" * 50)
         print("Initializing LLM Interface...")
+        
+        # Check CUDA availability and compatibility
+        self.has_cuda = torch.cuda.is_available()
+        
+        # Print CUDA info if available
+        if self.has_cuda:
+            try:
+                print(f"CUDA Device: {torch.cuda.get_device_name(0)}")
+                print(f"CUDA Version: {torch.version.cuda}")
+                print(f"PyTorch CUDA Version: {torch.version.cuda}")
+                print(f"GPU Memory: {torch.cuda.memory_allocated(0)/1e9:.1f}GB / {torch.cuda.get_device_properties(0).total_memory/1e9:.1f}GB")
+                # Check compute capability
+                capability = torch.cuda.get_device_capability()
+                print(f"CUDA Capability: {capability[0]}.{capability[1]}")
+            except Exception as e:
+                print(f"Warning: Could not get CUDA device info: {e}")
+                self.has_cuda = False
+        else:
+            print("CUDA is not available. Using CPU.")
         
         # Auto-detect CUDA if device is not specified
         if device is None:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.device = "cuda" if self.has_cuda else "cpu"
         else:
             self.device = device
-            
-        # Print CUDA info if available
-        if self.device == "cuda" and torch.cuda.is_available():
-            print(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
-            print(f"CUDA Version: {torch.version.cuda}")
-            print(f"GPU Memory: {torch.cuda.memory_allocated(0)/1e9:.1f}GB / {torch.cuda.get_device_properties(0).total_memory/1e9:.1f}GB")
-        else:
-            print(f"Using device: {self.device.upper()}")
+        
+        # Fall back to CPU if CUDA is not properly configured
+        if self.device.startswith('cuda') and not self.has_cuda:
+            print("Warning: CUDA was requested but is not available. Falling back to CPU.")
+            self.device = "cpu"
+        
+        print(f"\nUsing device: {self.device.upper()}")
+        if self.device.startswith('cuda'):
+            print("Note: Using CUDA with mixed precision if available")
+        print("=" * 50)
         
         # Initialize models (will be loaded on first use)
-        print("Initializing models...")
-        self.llm1 = SmallLLM1(device=self.device)
-        self.llm2 = SmallLLM2(device=self.device)
-        print("LLM Interface initialized successfully! Models will be loaded on first use.")
+        print("\nInitializing models...")
+        try:
+            self.llm1 = SmallLLM1(device=self.device)
+            self.llm2 = SmallLLM2(device=self.device)
+            print("\n" + "=" * 50)
+            print("LLM Interface initialized successfully!")
+            print(f"Models will be loaded on first use on {self.device.upper()}")
+            print("=" * 50)
+        except Exception as e:
+            print(f"\nError initializing models: {e}")
+            print("\n" + "!" * 50)
+            print("ERROR: Could not initialize models with current configuration.")
+            print("Attempting to initialize with CPU...")
+            print("!" * 50 + "\n")
+            
+            self.device = "cpu"
+            try:
+                self.llm1 = SmallLLM1(device=self.device)
+                self.llm2 = SmallLLM2(device=self.device)
+                print("\n" + "=" * 50)
+                print("LLM Interface initialized on CPU.")
+                print("Note: Performance will be slower than with CUDA")
+                print("=" * 50)
+            except Exception as cpu_e:
+                print("\n" + "!" * 50)
+                print("FATAL: Could not initialize models on CPU either.")
+                print(f"Error: {cpu_e}")
+                print("Please check your installation and try again.")
+                print("!" * 50)
+                raise
 
     def process_text_with_llm1(self, text: str, max_length: int = 100, temperature: float = 0.7) -> str:
         """
