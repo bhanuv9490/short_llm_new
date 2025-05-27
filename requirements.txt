@@ -32,4 +32,4 @@ passlib[bcrypt]==1.7.4
 python-dotenv==1.1.0
 jinja2==3.1.6
 aiofiles==24.1.0
-numpy==2.0.2  # Fixed to latest stable version
+numpy<2.0.0  # Fixed to latest stable version
