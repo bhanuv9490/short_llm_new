@@ -9,13 +9,18 @@ logging.set_verbosity_error()
 warnings.filterwarnings("ignore", category=UserWarning)
 
 class SmallLLM1:
-    def __init__(self, model_name="microsoft/phi-2", device='cpu'):
+    def __init__(self, model_name="microsoft/phi-2", device=None):
         print(f"Initializing {model_name}...")
-        self.device = device
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model_name = model_name
         self.model = None
         self.tokenizer = None
         self.is_initialized = False
+        
+        # Use mixed precision for CUDA if available
+        self.use_amp = self.device.startswith('cuda')
+        if self.use_amp:
+            self.scaler = torch.cuda.amp.GradScaler()
         
     def _download_with_progress(self):
         """Download model with progress bar"""
@@ -30,10 +35,12 @@ class SmallLLM1:
         
         # Initialize model with progress
         print("Downloading model weights...")
+        torch_dtype = torch.float16 if self.use_amp else torch.float32
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
-            torch_dtype=torch.float32,  # Always use float32 for CPU compatibility
-            trust_remote_code=True
+            torch_dtype=torch_dtype,
+            trust_remote_code=True,
+            device_map="auto" if self.device.startswith('cuda') else None
         ).to(self.device)
         
         self.is_initialized = True
@@ -67,15 +74,27 @@ class SmallLLM1:
             
             # Generate response with progress
             with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    max_length=max_length,
-                    temperature=temperature,
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    num_return_sequences=1,
-                    no_repeat_ngram_size=2
-                )
+                if self.use_amp:
+                    with torch.cuda.amp.autocast():
+                        outputs = self.model.generate(
+                            **inputs,
+                            max_length=max_length,
+                            temperature=temperature,
+                            do_sample=True,
+                            pad_token_id=self.tokenizer.eos_token_id,
+                            num_return_sequences=1,
+                            no_repeat_ngram_size=2
+                        )
+                else:
+                    outputs = self.model.generate(
+                        **inputs,
+                        max_length=max_length,
+                        temperature=temperature,
+                        do_sample=True,
+                        pad_token_id=self.tokenizer.eos_token_id,
+                        num_return_sequences=1,
+                        no_repeat_ngram_size=2
+                    )
                 
             # Decode and clean up the output
             response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
