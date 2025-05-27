@@ -1,16 +1,29 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer, logging, BitsAndBytesConfig
+import os
+import sys
 import torch
 import time
-from tqdm import tqdm
 import warnings
-import os
+from tqdm import tqdm
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    logging
+)
+
+# Suppress some unnecessary warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+logging.set_verbosity_error()
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Suppress some unnecessary warnings
 logging.set_verbosity_error()
 warnings.filterwarnings("ignore", category=UserWarning)
 
 class SmallLLM1:
-    def __init__(self, model_name="microsoft/phi-3-mini-4k-instruct", device=None):
+    def __init__(self, model_name="microsoft/phi-3-mini-4k-instruct", device=None, load_in_4bit=True):
         print(f"Initializing {model_name}...")
         
         # Check CUDA availability and compatibility
@@ -33,16 +46,19 @@ class SmallLLM1:
             truncation_side='left'
         )
         
-        # Configure quantization for better memory usage
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
-            bnb_4bit_use_double_quant=True,
-        )
-        
-        # Set data type based on device and AMP
-        torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        # Configure quantization if needed
+        if load_in_4bit and self.has_cuda:
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+                bnb_4bit_use_double_quant=True,
+            )
+            quantization_config = bnb_config
+            torch_dtype = None  # Let transformers handle the dtype when using quantization
+        else:
+            quantization_config = None
+            torch_dtype = torch.bfloat16 if (self.has_cuda and torch.cuda.is_bf16_supported()) else torch.float16
         
         try:
             if self.has_cuda:
@@ -63,29 +79,39 @@ class SmallLLM1:
                     'torch_dtype': torch_dtype,
                     'device_map': 'auto',
                     'trust_remote_code': True,
-                    'quantization_config': bnb_config,
                     'use_cache': True,
                 }
+                
+                if quantization_config is not None:
+                    model_kwargs['quantization_config'] = quantization_config
 
                 try:
-                    # Load the model with the specified configuration
+                    print(f"Loading model {model_name} with config: {model_kwargs}")
+                    # First try loading with the specified config
                     self.model = AutoModelForCausalLM.from_pretrained(
                         model_name,
                         **model_kwargs
                     )
-                    print("Phi-3 model loaded successfully with 4-bit quantization")
+                    print("Model loaded successfully")
                 except Exception as e:
                     print(f"Error loading Phi-3 model: {str(e)}")
                     
                     # Fallback to CPU if CUDA fails
-                    if self.has_cuda:
+                    if self.has_cuda and 'cpu' not in str(e).lower():
+                        print(f"CUDA loading failed: {str(e)}")
                         print("Falling back to CPU...")
                         self.device = 'cpu'
                         model_kwargs['device_map'] = 'cpu'
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_name,
-                            **{k: v for k, v in model_kwargs.items() if k != 'quantization_config'}
-                        )
+                        if 'quantization_config' in model_kwargs:
+                            del model_kwargs['quantization_config']
+                        try:
+                            self.model = AutoModelForCausalLM.from_pretrained(
+                                model_name,
+                                **model_kwargs
+                            )
+                            print("Model loaded successfully on CPU")
+                        except Exception as cpu_e:
+                            raise RuntimeError(f"Failed to load model on CPU: {str(cpu_e)}")
                     else:
                         raise RuntimeError(f"Failed to load model: {str(e)}")
             else:

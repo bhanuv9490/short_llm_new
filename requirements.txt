@@ -1,13 +1,13 @@
-# Core ML Dependencies with version constraints for Apple Silicon
---find-links https://download.pytorch.org/whl/torch_stable.html
-torch>=2.1.0
-torchaudio>=2.1.0
-torchvision>=0.16.0
+# Core ML Dependencies with specific versions for compatibility
+torch>=2.2.0,<2.3.0
+torchaudio>=2.2.0,<2.3.0
+torchvision>=0.17.0,<0.18.0
 
-# Transformer and Model Libraries with pre-built wheels
-transformers>=4.37.0
-sentencepiece>=0.1.99; sys_platform != 'darwin'  # Use system package on macOS
+# Transformer and Model Libraries
+transformers>=4.37.0,<4.39.0  # Pin to a version known to work with Phi-3
+sentencepiece>=0.1.99  # Required for tokenizers
 accelerate>=0.25.0
+bitsandbytes>=0.41.0  # Required for 4-bit quantization
 
 # For Apple Silicon (M1/M2) - use conda or install system dependencies
 # Run: brew install cmake pkg-config
