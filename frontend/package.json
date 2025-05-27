@@ -14,7 +14,7 @@
     "web-vitals": "^3.5.1"
   },
   "scripts": {
-    "start": "PORT=3000 react-scripts start",
+    "start": "PORT=3000 HOST=0.0.0.0 DANGEROUSLY_DISABLE_HOST_CHECK=true react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
@@ -39,7 +39,7 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:8001",
+  "proxy": "http://localhost:8000",
   "devDependencies": {
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
