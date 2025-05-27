@@ -1,13 +1,34 @@
-torch>=2.0.0
-transformers>=4.30.0
-sentencepiece>=0.1.99
-accelerate>=0.20.0
-numpy>=1.24.0
+# Core ML Dependencies with version constraints for Apple Silicon
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch>=2.1.0
+torchaudio>=2.1.0
+torchvision>=0.16.0
+
+# Transformer and Model Libraries with pre-built wheels
+transformers>=4.37.0
+sentencepiece>=0.1.99; sys_platform != 'darwin'  # Use system package on macOS
+accelerate>=0.25.0
+
+# For Apple Silicon (M1/M2) - use conda or install system dependencies
+# Run: brew install cmake pkg-config
+
+# Quantization (optional, uncomment if needed)
+# bitsandbytes>=0.41.0  # Note: May require manual build on some systems
+
+# For better performance on Apple Silicon
+# pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cpu
+
+# Web Framework
 fastapi>=0.95.0
 uvicorn>=0.21.0
 python-multipart>=0.0.6
+
+# Security & Authentication
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
+
+# Utilities
 python-dotenv>=1.0.0
 jinja2>=3.1.2
 aiofiles>=23.1.0
+numpy>=1.24.0
