@@ -71,23 +71,29 @@ function App() {
     }
 
     setIsLoading(true);
-    setError(null);
-    
+    setError('');
+    setResponse('');
+
     try {
+      // Show loading state
+      setResponse('Loading model and generating response. This may take a minute...');
+      
+      // Call the API
       const result = await generateText(prompt, model, {
         max_length: maxLength,
         temperature,
         top_p: topP
       });
       
-      if (result.status === 'success') {
-        setResponse(result.response);
+      if (result.success) {
+        setResponse(result.response || 'No response generated');
       } else {
-        throw new Error(result.error || 'Failed to generate response');
+        setError(result.error || 'Failed to generate response');
+        setSnackbarOpen(true);
       }
-    } catch (error) {
-      console.error('Error generating response:', error);
-      setError(error.message || 'Failed to generate response. Please try again.');
+    } catch (err) {
+      console.error('Error in handleSubmit:', err);
+      setError(err.message || 'An unexpected error occurred');
       setSnackbarOpen(true);
     } finally {
       setIsLoading(false);
@@ -219,25 +225,57 @@ function App() {
           </form>
         </Paper>
 
-        {isLoading && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-            <CircularProgress />
+        <Paper elevation={3} sx={{ mt: 4, p: 3, bgcolor: 'background.paper', borderRadius: 1 }}>
+          <Typography variant="h6" gutterBottom>Response</Typography>
+          <Box sx={{ 
+            minHeight: '200px',
+            p: 3, 
+            bgcolor: 'background.default',
+            borderRadius: 1,
+            border: '1px solid',
+            borderColor: 'divider',
+            position: 'relative'
+          }}>
+            {isLoading ? (
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                height: '100%',
+                color: 'text.secondary'
+              }}>
+                <CircularProgress sx={{ mb: 2 }} />
+                <Typography variant="body1" align="center">
+                  {response === 'Loading model and generating response. This may take a minute...' 
+                    ? 'Loading model... (First time may take a few minutes)' 
+                    : 'Generating response...'}
+                </Typography>
+                {response === 'Loading model and generating response. This may take a minute...' && (
+                  <Typography variant="caption" color="textSecondary" align="center" sx={{ mt: 1, display: 'block' }}>
+                    The model is being downloaded (about 2.7GB). This only happens once.
+                  </Typography>
+                )}
+              </Box>
+            ) : response ? (
+              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                {response}
+              </Typography>
+            ) : (
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                height: '100%',
+                color: 'text.secondary'
+              }}>
+                <Typography variant="body1">
+                  Enter a prompt and click "Generate" to see the response.
+                </Typography>
+              </Box>
+            )}
           </Box>
-        )}
-        
-        {response && (
-          <Paper elevation={3} sx={{ p: 3, mt: 2, whiteSpace: 'pre-wrap' }}>
-            <Typography variant="h6" gutterBottom>Response:</Typography>
-            <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
-              {response.split('\n').map((line, i) => (
-                <React.Fragment key={i}>
-                  {line}
-                  <br />
-                </React.Fragment>
-              ))}
-            </Typography>
-          </Paper>
-        )}
+        </Paper>
         
         <Snackbar
           open={snackbarOpen}
