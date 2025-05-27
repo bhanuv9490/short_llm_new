@@ -1,15 +1,16 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer, logging
+from transformers import AutoModelForCausalLM, AutoTokenizer, logging, BitsAndBytesConfig
 import torch
 import time
 from tqdm import tqdm
 import warnings
+import os
 
 # Suppress some unnecessary warnings
 logging.set_verbosity_error()
 warnings.filterwarnings("ignore", category=UserWarning)
 
 class SmallLLM1:
-    def __init__(self, model_name="microsoft/phi-4", device=None):
+    def __init__(self, model_name="microsoft/phi-3-mini-4k-instruct", device=None):
         print(f"Initializing {model_name}...")
         
         # Check CUDA availability and compatibility
@@ -32,8 +33,16 @@ class SmallLLM1:
             truncation_side='left'
         )
         
+        # Configure quantization for better memory usage
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+        )
+        
         # Set data type based on device and AMP
-        torch_dtype = torch.bfloat16 if (self.use_amp and self.has_cuda) else torch.float32
+        torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
         
         try:
             if self.has_cuda:
@@ -49,36 +58,36 @@ class SmallLLM1:
                     'offload_state_dict': True
                 }
                 
-                # Try loading with different configurations
-                for attempt in range(3):
-                    try:
-                        if attempt == 0 and self.has_cuda:
-                            # First try with flash attention if available
-                            load_kwargs['attn_implementation'] = 'flash_attention_2'
-                            self.model = AutoModelForCausalLM.from_pretrained(
-                                model_name, **load_kwargs)
-                            print("Loaded with flash attention 2")
-                            break
-                        elif attempt == 1:
-                            # Then try with default settings
-                            if 'attn_implementation' in load_kwargs:
-                                del load_kwargs['attn_implementation']
-                            self.model = AutoModelForCausalLM.from_pretrained(
-                                model_name, **load_kwargs)
-                            print("Loaded with default attention")
-                            break
-                        else:
-                            # Finally try with safe tensors
-                            load_kwargs['use_safetensors'] = True
-                            self.model = AutoModelForCausalLM.from_pretrained(
-                                model_name, **load_kwargs)
-                            print("Loaded with safe tensors")
-                            break
-                    except Exception as e:
-                        if attempt == 2:  # Last attempt
-                            raise RuntimeError(f"Failed to load model after multiple attempts: {str(e)}")
-                        print(f"Attempt {attempt + 1} failed: {str(e)}")
-                        continue
+                # Configure model loading
+                model_kwargs = {
+                    'torch_dtype': torch_dtype,
+                    'device_map': 'auto',
+                    'trust_remote_code': True,
+                    'quantization_config': bnb_config,
+                    'use_cache': True,
+                }
+
+                try:
+                    # Load the model with the specified configuration
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        model_name,
+                        **model_kwargs
+                    )
+                    print("Phi-3 model loaded successfully with 4-bit quantization")
+                except Exception as e:
+                    print(f"Error loading Phi-3 model: {str(e)}")
+                    
+                    # Fallback to CPU if CUDA fails
+                    if self.has_cuda:
+                        print("Falling back to CPU...")
+                        self.device = 'cpu'
+                        model_kwargs['device_map'] = 'cpu'
+                        self.model = AutoModelForCausalLM.from_pretrained(
+                            model_name,
+                            **{k: v for k, v in model_kwargs.items() if k != 'quantization_config'}
+                        )
+                    else:
+                        raise RuntimeError(f"Failed to load model: {str(e)}")
             else:
                 print("CUDA not available. Falling back to CPU...")
                 self.model = AutoModelForCausalLM.from_pretrained(
