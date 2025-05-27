@@ -4,7 +4,16 @@ import torch
 class SmallLLM2:
     def __init__(self, model_name="gpt2", device=None):
         print(f"Loading {model_name}...")
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Check CUDA availability and compatibility
+        self.has_cuda = torch.cuda.is_available()
+        self.device = device or ("cuda" if self.has_cuda else "cpu")
+        
+        # Fall back to CPU if CUDA is not properly configured
+        if self.device.startswith('cuda') and not self.has_cuda:
+            print("Warning: CUDA is not available. Falling back to CPU.")
+            self.device = "cpu"
+            
         self.use_amp = self.device.startswith('cuda')
         
         # Initialize tokenizer
@@ -13,19 +22,44 @@ class SmallLLM2:
         # Configure model with appropriate precision
         torch_dtype = torch.float16 if self.use_amp else torch.float32
         
-        # Load model with device map for automatic sharding if on CUDA
-        self.model = GPT2LMHeadModel.from_pretrained(
-            model_name,
-            torch_dtype=torch_dtype,
-            pad_token_id=self.tokenizer.eos_token_id,
-            device_map="auto" if self.device.startswith('cuda') else None
-        ).to(self.device)
-        
-        if self.use_amp:
-            self.scaler = torch.cuda.amp.GradScaler()
-            
-        print(f"{model_name} loaded successfully on {self.device.upper()}" + 
-              (" with mixed precision" if self.use_amp else ""))
+        try:
+            # Try loading with CUDA if available
+            if self.use_amp:
+                # Use device_map='auto' for better memory management with CUDA
+                self.model = GPT2LMHeadModel.from_pretrained(
+                    model_name,
+                    torch_dtype=torch_dtype,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    device_map='auto' if self.has_cuda else None
+                )
+                # Initialize GradScaler for mixed precision
+                self.scaler = torch.amp.GradScaler(device_type='cuda')
+            else:
+                # For CPU or when CUDA is not available
+                self.model = GPT2LMHeadModel.from_pretrained(
+                    model_name,
+                    torch_dtype=torch_dtype,
+                    pad_token_id=self.tokenizer.eos_token_id
+                ).to(self.device)
+                
+            print(f"{model_name} loaded successfully on {self.device.upper()}" + 
+                  (" with mixed precision" if self.use_amp else ""))
+                  
+        except RuntimeError as e:
+            if 'CUDA' in str(e):
+                print(f"CUDA error: {e}")
+                print("Falling back to CPU...")
+                self.device = "cpu"
+                self.use_amp = False
+                # Retry with CPU
+                self.model = GPT2LMHeadModel.from_pretrained(
+                    model_name,
+                    torch_dtype=torch.float32,
+                    pad_token_id=self.tokenizer.eos_token_id
+                ).to(self.device)
+                print(f"{model_name} loaded on CPU")
+            else:
+                raise
 
     def generate(self, prompt, max_length=100, temperature=0.7, top_p=0.9):
         """
