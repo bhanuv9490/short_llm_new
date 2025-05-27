@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -31,6 +31,11 @@ app.add_middleware(
 
 # Initialize LLM interface
 llm_interface = LLMInterface()
+
+# Favicon route
+@app.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 class GenerationRequest(BaseModel):
     prompt: str
